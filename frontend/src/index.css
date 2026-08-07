@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 4%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 98%;
+    --secondary-foreground: 222 22% 8%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 20% 96%;
+    --accent-foreground: 222 22% 8%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 3%;
+    --foreground: 210 20% 98%;
+    --card: 222 36% 6%;
+    --card-foreground: 210 20% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 3%;
+    --secondary: 222 30% 10%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 222 28% 12%;
+    --muted-foreground: 215 16% 56%;
+    --accent: 222 28% 12%;
+    --accent-foreground: 210 20% 98%;
+    --border: 222 28% 14%;
+    --input: 222 28% 14%;
+    --ring: 217 91% 60%;
+  }
+
+  * { @apply border-border; }
+  html { @apply antialiased; }
+  body {
+    @apply bg-background text-foreground font-sans selection:bg-primary/20;
+    font-feature-settings: "cv02","cv03","cv04","cv11";
+    letter-spacing: -0.011em;
+  }
+  /* Disable number input wheel */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .ring-focus { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
+}
+
+/* Premium scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-track { @apply bg-transparent; }

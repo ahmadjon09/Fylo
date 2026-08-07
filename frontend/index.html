@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en" suppressHydrationWarning>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fylo • Warehouse & Sales OS</title>
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // THEME BEFORE PAINT — prevent flash
+      (function() {
+        try {
+          const stored = localStorage.getItem('theme');
+          const theme = stored || 'system';
+          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const resolved = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
+          const root = document.documentElement;
+          if (resolved === 'dark') root.classList.add('dark');
+          else root.classList.remove('dark');
+          root.style.colorScheme = resolved;
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0a0f1c' : '#ffffff');
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Critical loader — adapts to theme */
+      html { background: hsl(0 0% 100%); }
+      html.dark { background: hsl(222 47% 3%); }
+      #root-loader {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: inherit; z-index: 9999; transition: opacity 0.2s;
+      }
+      .loader-ring {
+        width: 32px; height: 32px; border-radius: 50%;
+        border: 3px solid hsl(214 32% 91%);
+        border-top-color: hsl(221 83% 53%);
+        animation: spin 0.8s linear infinite;
+      }
+      html.dark .loader-ring { border-color: hsl(222 28% 14%); border-top-color: hsl(217 91% 60%); }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body class="bg-background text-foreground">
+    <div id="root-loader"><div class="loader-ring"></div></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Hide loader after React mounts
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const el = document.getElementById('root-loader');
+          if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }
+        }, 100);
+      });
+    </script>
+  </body>
+</html>

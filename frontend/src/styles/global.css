@@ -1,0 +1,58 @@
+:root{
+  --bg:#f8fafc;--bg-card:#ffffff;--bg-hover:#f1f5f9;--bg-sidebar:#ffffff;
+  --text:#0f172a;--text-secondary:#64748b;--text-muted:#94a3b8;
+  --border:#e2e8f0;--border-strong:#cbd5e1;
+  --primary:#2563eb;--primary-hover:#1d4ed8;--primary-light:#eff6ff;
+  --success:#16a34a;--warning:#d97706;--danger:#dc2626;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);--shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1);--shadow-lg:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
+  --radius:12px;--radius-sm:8px;--radius-lg:16px;
+  --sidebar-w:280px;
+}
+[data-theme="dark"]{
+  --bg:#0f172a;--bg-card:#1e293b;--bg-hover:#334155;--bg-sidebar:#1e293b;
+  --text:#f1f5f9;--text-secondary:#94a3b8;--text-muted:#64748b;
+  --border:#334155;--border-strong:#475569;
+  --primary:#3b82f6;--primary-hover:#2563eb;--primary-light:#1e3a5f;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.2);--shadow:0 4px 6px -1px rgba(0,0,0,.3);--shadow-lg:0 10px 15px -3px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{height:100%;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+a{color:var(--primary);text-decoration:none}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* Utility */
+.container{max-width:1400px;margin:0 auto;padding:0 20px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:all .2s}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;border:0;transition:all .15s;white-space:nowrap;user-select:none}
+.btn:disabled{opacity:.6;pointer-events:none}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-hover);transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn-ghost{background:transparent;color:var(--text)}.btn-ghost:hover{background:var(--bg-hover)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--bg-hover);border-color:var(--border-strong)}
+.input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text);font-size:14px;transition:border .15s}
+.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.input.error{border-color:var(--danger)}
+.label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.badge-success{background:#dcfce7;color:#166534}[data-theme="dark"] .badge-success{background:#14532d;color:#bbf7d0}
+.badge-warning{background:#fef3c7;color:#92400e}[data-theme="dark"] .badge-warning{background:#78350f;color:#fde68a}
+.badge-danger{background:#fee2e2;color:#991b1b}[data-theme="dark"] .badge-danger{background:#7f1d1d;color:#fecaca}
+.badge-info{background:#dbeafe;color:#1e40af}[data-theme="dark"] .badge-info{background:#1e3a8a;color:#bfdbfe}
+.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card)}
+.table{width:100%;border-collapse:collapse}
+.table th{text-align:left;padding:14px 16px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);background:var(--bg);border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0}
+.table td{padding:14px 16px;font-size:14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.table tr:hover td{background:var(--bg-hover)}
+.grid{display:grid;gap:16px}
+.grid-2{grid-template-columns:repeat(2,1fr)} .grid-3{grid-template-columns:repeat(3,1fr)} .grid-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1024px){.grid-4{grid-template-columns:repeat(2,1fr)} .grid-3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr} :root{--sidebar-w:0px}}
+.skeleton{background:linear-gradient(90deg,var(--border) 25%,var(--bg-hover) 50%,var(--border) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
