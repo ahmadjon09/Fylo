@@ -25,7 +25,7 @@ export default function Login() {
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { phone: '+998901234567', password: 'admin123' }
+    defaultValues: { phone: '', password: '' }
   });
   const phoneVal = watch('phone');
 
