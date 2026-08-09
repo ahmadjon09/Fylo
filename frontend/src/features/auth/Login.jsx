@@ -25,7 +25,7 @@ export default function Login() {
 
   const { register, handleSubmit, setValue, watch, formState:{ errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues:{ phone:'+998901234567', password:'admin123' }
+    defaultValues:{ phone:'', password:'' }
   });
   const phoneVal = watch('phone');
 
@@ -69,9 +69,7 @@ export default function Login() {
               </Button>
             </form>
 
-            <div className="rounded-[12px] border border-border bg-muted/40 p-3 text-[12px] leading-[1.5] text-muted-foreground">
-              <span className="font-[600] text-foreground">Fylo OS</span> — {t('auth.demoHint')} • {t('auth.registerSub')}
-            </div>
+      
           </div>
         </div>
 
