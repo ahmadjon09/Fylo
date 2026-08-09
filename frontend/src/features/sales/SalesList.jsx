@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import Button from '../../components/ui/Button';
@@ -7,14 +7,14 @@ import { PremiumTable } from '../../components/ui/Table';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
-import { getSocket } from '../../lib/socket';
-import { FiPlus, FiDownload, FiPrinter, FiShoppingCart } from 'react-icons/fi';
+import { FiPlus, FiDownload, FiPrinter, FiShoppingCart, FiLoader } from 'react-icons/fi';
 
 export default function SalesList() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [refundingId, setRefundingId] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey:['sales', page],
@@ -24,22 +24,21 @@ export default function SalesList() {
     gcTime: 1000*60*10,
   });
 
-  useEffect(()=>{
-    const s = getSocket();
-    if (!s) return;
-    const ref = ()=> qc.invalidateQueries({ queryKey:['sales'] });
-    s.on('sale:created', ref); s.on('sale:refunded', ref);
-    return ()=>{ s.off('sale:created', ref); s.off('sale:refunded', ref); };
-  },[qc]);
-
   const refundMut = useMutation({
-    mutationFn: async(id)=> await api.post(`/sales/${id}/refund`),
-    onSuccess: ()=>{ toast.success(t('sale.refundSuccess')); qc.invalidateQueries({queryKey:['sales']}); },
-    onError: (e)=> toast.error(e.response?.data?.message||t('toast.error')),
+    mutationFn: async(id)=> { setRefundingId(id); return await api.post(`/sales/${id}/refund`); },
+    onMutate: async(id)=>{
+      qc.setQueriesData({ queryKey:['sales'] }, (old)=>{
+        if (!old) return old;
+        return { ...old, data: (old.data||[]).map(s=> s._id===id ? { ...s, status:'refunded' } : s) };
+      });
+    },
+    onSuccess: ()=>{ toast.success(t('sale.refundSuccess')); qc.invalidateQueries({queryKey:['sales']}); qc.invalidateQueries({queryKey:['dashboard']}); },
+    onError: (e)=> { toast.error(e.response?.data?.message||t('toast.error')); qc.invalidateQueries({queryKey:['sales']}); },
+    onSettled: ()=> setRefundingId(null),
   });
 
   const handleExport = async()=>{
-    try{ const res = await api.get('/export/sales', { responseType:'blob' }); const url = window.URL.createObjectURL(new Blob([res.data])); const a=document.createElement('a'); a.href=url; a.download='sales.xlsx'; a.click(); }catch{ toast.error(t('toast.error')); }
+    try{ const res = await api.get('/export/sales', { responseType:'blob' }); const url = window.URL.createObjectURL(new Blob([res.data])); const a=document.createElement('a'); a.href=url; a.download='Fylo-sotuvlar.xlsx'; a.click(); }catch{ toast.error(t('toast.error')); }
   };
   const handlePrint = ()=>{
     const w = window.open('', '_blank');
@@ -48,16 +47,24 @@ export default function SalesList() {
   };
 
   const columns = [
-    { key:'createdAt', title:t('common.date'), sortable:true, render:(_,row)=> <span className="text-[12px] text-muted-foreground">{new Date(row.createdAt).toLocaleDateString()}</span> },
-    { key:'product', title:t('sale.product'), render:(_,row)=> <span className="font-[600] text-[13px]">{row.product?.name||row.productSnapshot?.name}</span> },
-    { key:'quantity', title:t('sale.quantity'), render:(v)=> <span className="tabular-nums font-[600]">{v}</span> },
-    { key:'unitCost', title:t('sale.unitCost'), render:(v,row)=> `$${row.unitCost?.toFixed(2)}` },
-    { key:'sellingPrice', title:t('sale.sellingPrice'), render:(v)=> `$${v?.toFixed(2)}` },
-    { key:'totalRevenue', title:t('sale.revenue'), render:(v)=> <span className="font-[650] tabular-nums">${v?.toFixed(2)}</span> },
-    { key:'profit', title:t('sale.profit'), render:(v)=> <span className="font-[650] tabular-nums text-emerald-600 dark:text-emerald-400">+${v?.toFixed(2)}</span> },
-    { key:'customer', title:t('sale.customer'), render:(_,row)=> row.customer?.name||'-' },
-    { key:'soldBy', title:t('sale.soldBy'), render:(_,row)=> <span className="text-[12px]">{row.soldBy?.fullName}</span> },
-    { key:'actions', title:t('common.actions'), render:(_,row)=> row.status!=='refunded' ? <Button size="sm" variant="outline" onClick={()=>{ if(confirm(t('sale.refundConfirm'))) refundMut.mutate(row._id); }}>{t('sale.refund')}</Button> : <Badge variant="outline">Refunded</Badge> },
+    { key:'createdAt', title:t('common.date'), sortable:true, render:(_,row)=> <span className="text-[12px] text-muted-foreground">{row?.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'}</span> },
+    { key:'product', title:t('sale.product'), render:(_,row)=> <span className="font-[600] text-[13px]">{row?.product?.name||row?.productSnapshot?.name||'-'}</span> },
+    { key:'quantity', title:t('sale.quantity'), render:(v)=> <span className="tabular-nums font-[600]">{v||0}</span> },
+    { key:'unitCost', title:t('sale.unitCost'), render:(v,row)=> `$${(row?.unitCost||0).toFixed(2)}` },
+    { key:'sellingPrice', title:t('sale.sellingPrice'), render:(v)=> `$${(v||0).toFixed(2)}` },
+    { key:'totalRevenue', title:t('sale.revenue'), render:(v)=> <span className="font-[650] tabular-nums">${(v||0).toFixed(2)}</span> },
+    { key:'profit', title:t('sale.profit'), render:(v)=> <span className="font-[650] tabular-nums text-emerald-600 dark:text-emerald-400">+${(v||0).toFixed(2)}</span> },
+    { key:'customer', title:t('sale.customer'), render:(_,row)=> row?.customer?.name||'-' },
+    { key:'soldBy', title:t('sale.soldBy'), render:(_,row)=> <span className="text-[12px]">{row?.soldBy?.fullName||'-'}</span> },
+    { key:'actions', title:t('common.actions'), render:(_,row)=> {
+      if (row?.status==='refunded') return <Badge variant="outline">Refunded</Badge>;
+      const isLoading = refundingId===row._id;
+      return (
+        <Button size="sm" variant="outline" loading={isLoading} disabled={isLoading} onClick={()=>{ if(confirm(t('sale.refundConfirm'))) refundMut.mutate(row._id); }}>
+          {isLoading ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : null} {t('sale.refund')}
+        </Button>
+      );
+    }},
   ];
 
   return (

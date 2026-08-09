@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiChevronUp, FiChevronDown, FiSearch, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiChevronUp, FiChevronDown, FiSearch, FiEye, FiEyeOff, FiInbox, FiLoader } from 'react-icons/fi';
 
 function usePersistentVisibility(key, defaultVis) {
   const [vis, setVis] = useState(()=>{
@@ -20,6 +20,7 @@ function usePersistentVisibility(key, defaultVis) {
 
 export const PremiumTable = ({ columns=[], data=[], loading=false, searchable=true, onSearch, searchValue, sortBy, sortOrder, onSort, pagination, onPageChange, columnVisibility: propVis, onColumnVisibilityChange: propToggle, storageKey, className='' }) => {
   const [localSearch, setLocalSearch] = useState('');
+  const safeData = Array.isArray(data) ? data : [];
   const defaultVis = Object.fromEntries(columns.map(c=> [c.key, true]));
   const [persistedVis, persistedToggle] = usePersistentVisibility(storageKey, defaultVis);
 
@@ -30,7 +31,6 @@ export const PremiumTable = ({ columns=[], data=[], loading=false, searchable=tr
 
   return (
     <div className={`rounded-[14px] border border-border bg-card overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${className}`}>
-      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border-b border-border bg-muted/30">
         {searchable && (
           <div className="relative flex-1 max-w-full sm:max-w-[320px] w-full">
@@ -51,7 +51,7 @@ export const PremiumTable = ({ columns=[], data=[], loading=false, searchable=tr
               className={`h-7 px-2.5 rounded-[8px] text-[11px] font-[550] border flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors ${columnVisibility[col.key]===false ? 'bg-muted text-muted-foreground border-border' : 'bg-foreground text-background border-foreground'}`}
               title={col.title}
             >
-              {columnVisibility[col.key]===false ? <FiEyeOff className="h-3 w-3" /> : <FiEye className="h-3 w-3" />} <span className="hidden sm:inline">{col.title}</span><span className="sm:hidden">{col.title.slice(0,3)}</span>
+              {columnVisibility[col.key]===false ? <FiEyeOff className="h-3 w-3" /> : <FiEye className="h-3 w-3" />} <span className="hidden sm:inline">{col.title}</span><span className="sm:hidden">{String(col.title||'').slice(0,3)}</span>
             </button>
           ))}
         </div>
@@ -83,32 +83,38 @@ export const PremiumTable = ({ columns=[], data=[], loading=false, searchable=tr
                   {visibleColumns.map((_,j)=><td key={j} className="px-4 py-4"><div className="h-4 w-full bg-muted rounded" /></td>)}
                 </tr>
               ))
-            ) : data.length===0 ? (
-              <tr><td colSpan={visibleColumns.length} className="px-4 py-16 text-center">
+            ) : safeData.length===0 ? (
+              <tr><td colSpan={visibleColumns.length || 1} className="px-4 py-16 text-center">
                 <div className="flex flex-col items-center gap-2">
-                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">∅</div>
+                  <div className="h-10 w-10 rounded-full bg-muted border border-border flex items-center justify-center"><FiInbox className="h-5 w-5 text-muted-foreground" /></div>
                   <p className="text-[13px] font-[500] text-muted-foreground">No data found</p>
                 </div>
               </td></tr>
-            ) : data.map((row,i)=>(
-              <tr key={row._id || i} className="group hover:bg-accent/40 transition-colors">
-                {visibleColumns.map(col=>(
-                  <td key={col.key} className="px-4 py-3 text-[13.5px] font-[450] tabular-nums">
-                    {col.render ? col.render(row[col.key], row, i) : row[col.key]}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            ) : safeData.map((row,i)=>{
+              if (!row) return null;
+              return (
+                <tr key={row._id || i} className="group hover:bg-accent/40 transition-colors">
+                  {visibleColumns.map(col=>{
+                    try {
+                      const content = col.render ? col.render(row[col.key], row, i) : row[col.key];
+                      return <td key={col.key} className="px-4 py-3 text-[13.5px] font-[450] tabular-nums">{content ?? '-'}</td>;
+                    } catch {
+                      return <td key={col.key} className="px-4 py-3 text-[13.5px]">-</td>;
+                    }
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {pagination && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 border-t border-border bg-muted/20 text-[12.5px]">
-          <span className="text-muted-foreground text-center sm:text-left">Page {pagination.page} of {pagination.pages} • {pagination.total} total</span>
+          <span className="text-muted-foreground text-center sm:text-left">Page {pagination.page || 1} of {pagination.pages || 1} • {pagination.total || 0} total</span>
           <div className="flex gap-1.5 justify-center sm:justify-end">
-            <button disabled={pagination.page<=1} onClick={()=>onPageChange(pagination.page-1)} className="h-8 px-4 rounded-[10px] border border-border bg-background disabled:opacity-50 hover:bg-accent text-[12px] font-[600]">Prev</button>
-            <button disabled={!pagination.hasNext} onClick={()=>onPageChange(pagination.page+1)} className="h-8 px-4 rounded-[10px] border border-border bg-background disabled:opacity-50 hover:bg-accent text-[12px] font-[600]">Next</button>
+            <button disabled={(pagination.page||1)<=1} onClick={()=>onPageChange((pagination.page||1)-1)} className="h-8 px-4 rounded-[10px] border border-border bg-background disabled:opacity-50 hover:bg-accent text-[12px] font-[600] flex items-center gap-1"><FiLoader className="h-3 w-3 hidden" />Prev</button>
+            <button disabled={!pagination.hasNext} onClick={()=>onPageChange((pagination.page||1)+1)} className="h-8 px-4 rounded-[10px] border border-border bg-background disabled:opacity-50 hover:bg-accent text-[12px] font-[600]">Next</button>
           </div>
         </div>
       )}

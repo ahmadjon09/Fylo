@@ -3,6 +3,7 @@ import { AppError } from '../../utils/errors.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/jwt.js';
 import { redis, cache } from '../../config/redis.js';
 import { env } from '../../config/env.js';
+import { logAudit } from '../audit/audit.service.js';
 
 const setCookies = (res, tokens) => {
   const isProd = env.isProd;
@@ -22,13 +23,12 @@ const setCookies = (res, tokens) => {
 
 export const register = async (req, res, next) => {
   try {
-    // Fast cache: check if any user exists via redis flag to avoid DB hit
     let userCount = 0;
     const cachedFlag = await redis.get('meta:hasUsers').catch(()=>null);
     if (cachedFlag === '1') {
       userCount = 1;
     } else {
-      userCount = await User.countDocuments().lean ? await User.countDocuments() : await User.countDocuments();
+      userCount = await User.countDocuments();
       if (userCount > 0) await redis.set('meta:hasUsers', '1', 'EX', 3600).catch(()=>{});
     }
 
@@ -40,15 +40,16 @@ export const register = async (req, res, next) => {
     const exists = await User.findOne({ phone }).lean();
     if (exists) throw new AppError('Телефон рақами аллақачон рўйхатдан ўтган', 409, 'CONFLICT');
 
-    const user = await User.create({ fullName, phone, password, role: 'admin', telegramId, loginCount: 1, lastLoginAt: new Date() });
+    // First user is super_admin
+    const user = await User.create({ fullName, phone, password, role: 'super_admin', telegramId, loginCount: 1, lastLoginAt: new Date() });
     const tokens = generateTokenPair(user);
 
-    // Fire-and-forget cache writes for speed
     redis.set(`refresh:${user._id}`, tokens.refreshToken, 'EX', 7 * 24 * 3600).catch(()=>{});
     redis.set('meta:hasUsers', '1', 'EX', 3600).catch(()=>{});
     cache.invalidateTags(['users']).catch(()=>{});
 
     setCookies(res, tokens);
+    logAudit({ req, action: 'user:create', targetId: user._id, user, details: { fullName, phone, role: 'super_admin', isFirst: true } });
 
     res.status(201).json({
       success: true,
@@ -65,11 +66,14 @@ export const login = async (req, res, next) => {
   try {
     const { phone, password } = req.body;
     const user = await User.findOne({ phone }).select('+password +tokenVersion');
-    if (!user) throw new AppError('Нотўғри маълумотлар', 401, 'UNAUTHORIZED');
+    if (!user) throw new AppError('Нотўғри логин ёки парол', 401, 'UNAUTHORIZED');
     if (user.isDisabled) throw new AppError('Аккаунт блокланган', 403, 'FORBIDDEN');
 
     const match = await user.comparePassword(password);
-    if (!match) throw new AppError('Нотўғри маълумотлар', 401, 'UNAUTHORIZED');
+    if (!match) {
+      logAudit({ req, action: 'user:login', details: { phone, success: false, reason: 'wrong_password' } });
+      throw new AppError('Нотўғри логин ёки парол', 401, 'UNAUTHORIZED');
+    }
 
     user.lastLoginAt = new Date();
     user.loginCount += 1;
@@ -77,22 +81,35 @@ export const login = async (req, res, next) => {
 
     const ua = req.headers['user-agent'] || 'unknown';
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-    user.devices.push({ userAgent: ua, ip, lastActive: new Date() });
+    // Location if provided
+    let locData = null;
+    if (req.body.location) locData = req.body.location;
+    
+    user.devices.push({ 
+      userAgent: ua, 
+      ip, 
+      lastActive: new Date(),
+      location: locData ? { lat: locData.lat, lon: locData.lon, city: locData.city, country: locData.country } : undefined,
+      locationString: locData ? `${locData.lat},${locData.lon}` : undefined
+    });
     if (user.devices.length > 20) user.devices.shift();
-    // Save without waiting for validation to speed up, but await for device log
+    
+    if (locData) {
+      user.lastLocation = { lat: locData.lat, lon: locData.lon, city: locData.city, country: locData.country, updatedAt: new Date() };
+    }
+
     const savePromise = user.save({ validateBeforeSave: false });
 
     const tokens = generateTokenPair(user);
-    // Fast redis set without await blocking response too much
     redis.set(`refresh:${user._id}`, tokens.refreshToken, 'EX', 7 * 24 * 3600).catch(()=>{});
 
     setCookies(res, tokens);
-    // Fire socket after save
     savePromise.then(()=> {
       req.io?.emit('user:login', { id: user._id, fullName: user.fullName });
     }).catch(()=>{});
 
     await savePromise;
+    logAudit({ req, action: 'user:login', targetId: user._id, user, details: { phone, success: true }, });
 
     res.json({
       success: true,
@@ -108,16 +125,16 @@ export const login = async (req, res, next) => {
 export const refresh = async (req, res, next) => {
   try {
     const token = req.body.refreshToken || req.cookies?.refreshToken;
-    if (!token) throw new AppError('Refresh token required', 401, 'UNAUTHORIZED');
+    if (!token) throw new AppError('Токен керак', 401, 'UNAUTHORIZED');
 
     const payload = verifyRefreshToken(token);
     const saved = await redis.get(`refresh:${payload.id}`);
-    if (!saved || saved !== token) throw new AppError('Invalid refresh token', 401, 'UNAUTHORIZED');
+    if (!saved || saved !== token) throw new AppError('Токен нотўғри', 401, 'UNAUTHORIZED');
 
     const user = await User.findById(payload.id).select('+tokenVersion');
-    if (!user) throw new AppError('User not found', 401, 'UNAUTHORIZED');
+    if (!user) throw new AppError('Фойдаланувчи топилмади', 401, 'UNAUTHORIZED');
     if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
-      throw new AppError('Token version mismatch', 401, 'UNAUTHORIZED');
+      throw new AppError('Токен эскирган', 401, 'UNAUTHORIZED');
     }
 
     const tokens = generateTokenPair(user);
@@ -137,10 +154,11 @@ export const logout = async (req, res, next) => {
       User.findByIdAndUpdate(userId, { isOnline: false }).catch(()=>{});
       redis.srem('presence:online', userId).catch(()=>{});
       req.io?.emit('user:offline', { id: userId });
+      logAudit({ req, action: 'user:logout', targetId: userId, user: req.user });
     }
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
-    res.json({ success: true, message: 'Logged out' });
+    res.json({ success: true, message: 'Чиқиш амалга оширилди' });
   } catch (e) { next(e); }
 };
 

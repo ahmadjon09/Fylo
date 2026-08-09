@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import Button from '../../components/ui/Button';
@@ -7,9 +7,8 @@ import { PremiumTable } from '../../components/ui/Table';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { getSocket } from '../../lib/socket';
 import { useAuth } from '../../hooks/useAuth';
-import { FiPlus, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiUsers, FiMessageCircle, FiLoader } from 'react-icons/fi';
 
 export default function UsersList() {
   const { t } = useTranslation();
@@ -17,6 +16,7 @@ export default function UsersList() {
   const navigate = useNavigate();
   const { user: me } = useAuth();
   const [search, setSearch] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey:['users', search],
@@ -25,32 +25,36 @@ export default function UsersList() {
     staleTime: 1000*60*2,
   });
 
-  useEffect(()=>{
-    const s = getSocket(); if(!s) return;
-    const ref=()=>qc.invalidateQueries({queryKey:['users']});
-    s.on('user:created',ref); s.on('user:updated',ref); s.on('user:deleted',ref);
-    return ()=>{ s.off('user:created',ref); s.off('user:updated',ref); s.off('user:deleted',ref); };
-  },[qc]);
-
   const deleteMut = useMutation({
-    mutationFn: async(id)=> await api.delete(`/users/${id}`),
+    mutationFn: async(id)=> { setDeletingId(id); return await api.delete(`/users/${id}`); },
+    onMutate: async(id)=>{
+      qc.setQueriesData({ queryKey:['users'] }, (old)=>{
+        if (!old) return old;
+        return { ...old, data: (old.data||[]).filter(u=>u._id!==id) };
+      });
+    },
     onSuccess: ()=>{ toast.success(t('toast.deleted')); qc.invalidateQueries({queryKey:['users']}); },
-    onError: (e)=> toast.error(e.response?.data?.message||t('toast.error')),
+    onError: (e)=> { toast.error(e.response?.data?.message||t('toast.error')); qc.invalidateQueries({queryKey:['users']}); },
+    onSettled: ()=> setDeletingId(null),
   });
 
   const columns = [
-    { key:'avatar', title:'', width:'56px', render:(_,row)=> <img src={row.avatar?.url || `https://api.dicebear.com/7.x/initials/svg?seed=${row.fullName}`} alt="" className="min-h-9 min-w-9 rounded-full border border-border object-cover" /> },
+    { key:'avatar', title:'', width:'56px', render:(_,row)=> <img src={row.avatar?.url || `https://api.dicebear.com/7.x/initials/svg?seed=${row.fullName}`} alt="" className="h-9 min-w-9 rounded-full border border-border object-cover" /> },
     { key:'fullName', title:t('user.fullName'), sortable:true, render:(v,row)=> <div><div className="font-[600] text-[13.5px]">{row.fullName} {row._id===me?.id && <span className="text-[11px] text-muted-foreground">(you)</span>}</div><div className="text-[11px] text-muted-foreground">{row.phone}</div></div> },
-    { key:'role', title:t('user.role'), render:(v)=> <Badge variant={v==='admin'?'info':'success'}>{v}</Badge> },
+    { key:'role', title:t('user.role'), render:(v)=> <Badge variant={v==='super_admin'?'info':v==='admin'?'info':'success'}>{v==='super_admin'?'Super Admin':v}</Badge> },
     { key:'isOnline', title:t('user.online'), render:(v)=> <Badge variant={v?'success':'outline'}>{v? 'online':'offline'}</Badge> },
     { key:'lastActiveAt', title:t('user.lastActive'), render:(v)=> <span className="text-[12px] text-muted-foreground">{v ? new Date(v).toLocaleString() : '-'}</span> },
-    { key:'actions', title:t('common.actions'), width:'110px', render:(_,row)=>{
+    { key:'actions', title:t('common.actions'), width:'140px', render:(_,row)=>{
       const isAnotherAdmin = row.role==='admin' && row._id!==me?.id;
+      const isSuperAdmin = row.role==='super_admin' && me?.role!=='super_admin';
       const isSelf = row._id===me?.id;
+      const disabledEdit = isSuperAdmin || isAnotherAdmin;
+      const disabledDel = isSuperAdmin || isAnotherAdmin || isSelf;
       return (
         <div className="flex items-center gap-1">
-          <button disabled={isAnotherAdmin} title={isAnotherAdmin ? t('user.cannotEditAdmin') : ''} onClick={()=>navigate(`/users/${row._id}`)} className="h-8 w-8 rounded-[8px] border border-border bg-background hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"><FiEdit2 className="h-3.5 w-3.5" /></button>
-          <button disabled={isAnotherAdmin || isSelf} title={isAnotherAdmin ? t('user.cannotDeleteAdmin') : isSelf ? t('user.cannotDeleteSelf') : ''} onClick={()=>{ if(confirm(t('user.deleteConfirm'))) deleteMut.mutate(row._id); }} className="h-8 w-8 rounded-[8px] border border-border bg-background hover:bg-red-50 hover:border-red-200 hover:text-red-600 disabled:opacity-30 flex items-center justify-center"><FiTrash2 className="h-3.5 w-3.5" /></button>
+          <button disabled={isSelf} title={isSelf ? 'Ozingizga yozib bolmaydi' : 'Xabar yozish'} onClick={()=>navigate(`/messages?user=${row._id}`)} className="h-8 w-8 rounded-[8px] border border-border bg-[#2AABEE]/10 text-[#2AABEE] hover:bg-[#2AABEE] hover:text-white disabled:opacity-30 flex items-center justify-center transition-colors"><FiMessageCircle className="h-3.5 w-3.5" /></button>
+          <button disabled={disabledEdit} title={disabledEdit ? t('user.cannotEditAdmin') : ''} onClick={()=>navigate(`/users/${row._id}`)} className="h-8 w-8 rounded-[8px] border border-border bg-background hover:bg-accent disabled:opacity-30 flex items-center justify-center transition-colors">{deletingId===row._id ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiEdit2 className="h-3.5 w-3.5" />}</button>
+          <button disabled={disabledDel} title={disabledDel ? (isSuperAdmin ? 'Super adminni ochirib bolmaydi' : isSelf ? t('user.cannotDeleteSelf') : t('user.cannotDeleteAdmin')) : ''} onClick={()=>{ if(confirm(t('user.deleteConfirm'))) deleteMut.mutate(row._id); }} className="h-8 w-8 rounded-[8px] border border-border bg-background hover:bg-red-50 hover:border-red-200 hover:text-red-600 disabled:opacity-30 flex items-center justify-center transition-colors">{deletingId===row._id ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiTrash2 className="h-3.5 w-3.5" />}</button>
         </div>
       );
     } },
@@ -69,7 +73,7 @@ export default function UsersList() {
       </div>
 
       <PremiumTable columns={columns} data={data?.data||[]} loading={isLoading} searchable={true} storageKey="users" searchValue={search} onSearch={setSearch} />
-      <div className="rounded-[12px] border border-dashed border-border bg-muted/20 p-3 text-[12px] text-muted-foreground">{t('user.cannotEditAdmin')} • {t('user.cannotDeleteAdmin')} — {t('user.cannotDeleteSelf')}</div>
+      <div className="rounded-[12px] border border-dashed border-border bg-muted/20 p-3 text-[12px] text-muted-foreground">ℹ️ {t('user.cannotEditAdmin')} • {t('user.cannotDeleteAdmin')} — {t('user.cannotDeleteSelf')} • Super adminni faqat super admin boshqaradi</div>
     </div>
   );
 }

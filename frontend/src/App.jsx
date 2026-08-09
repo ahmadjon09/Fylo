@@ -16,6 +16,9 @@ const SaleForm = lazy(()=> import('./features/sales/SaleForm'));
 const UsersList = lazy(()=> import('./features/users/UsersList'));
 const UserForm = lazy(()=> import('./features/users/UserForm'));
 const Profile = lazy(()=> import('./features/profile/Profile'));
+const AuditLogs = lazy(()=> import('./features/audit/AuditLogs'));
+const SystemPanel = lazy(()=> import('./features/system/SystemPanel'));
+const Messages = lazy(()=> import('./features/messages/Messages'));
 
 function Protected({ children, roles }) {
   const { isAuthenticated, loading, user } = useAuth();
@@ -75,16 +78,19 @@ export default function App() {
             } />
 
             <Route element={<Protected><Layout/></Protected>}>
-              <Route path="/" element={<Protected roles={['admin']}><Suspense fallback={<PageSkeleton/>}><Dashboard/></Suspense></Protected>} />
+              <Route path="/" element={<Protected roles={['admin','super_admin']}><Suspense fallback={<PageSkeleton/>}><Dashboard/></Suspense></Protected>} />
               <Route path="/products" element={<Suspense fallback={<PageSkeleton/>}><ProductList/></Suspense>} />
               <Route path="/products/new" element={<Suspense fallback={<PageSkeleton/>}><ProductForm/></Suspense>} />
               <Route path="/products/bulk" element={<Suspense fallback={<PageSkeleton/>}><BulkEntry/></Suspense>} />
               <Route path="/products/edit/:id" element={<Suspense fallback={<PageSkeleton/>}><ProductForm/></Suspense>} />
               <Route path="/sales" element={<Suspense fallback={<PageSkeleton/>}><SalesList/></Suspense>} />
               <Route path="/sales/new" element={<Suspense fallback={<PageSkeleton/>}><SaleForm/></Suspense>} />
-              <Route path="/users" element={<Protected roles={['admin']}><Suspense fallback={<PageSkeleton/>}><UsersList/></Suspense></Protected>} />
-              <Route path="/users/new" element={<Protected roles={['admin']}><Suspense fallback={<PageSkeleton/>}><UserForm/></Suspense></Protected>} />
-              <Route path="/users/:id" element={<Protected roles={['admin']}><Suspense fallback={<PageSkeleton/>}><UserForm/></Suspense></Protected>} />
+              <Route path="/messages" element={<Suspense fallback={<PageSkeleton/>}><Messages/></Suspense>} />
+              <Route path="/users" element={<Protected roles={['admin','super_admin']}><Suspense fallback={<PageSkeleton/>}><UsersList/></Suspense></Protected>} />
+              <Route path="/users/new" element={<Protected roles={['admin','super_admin']}><Suspense fallback={<PageSkeleton/>}><UserForm/></Suspense></Protected>} />
+              <Route path="/users/:id" element={<Protected roles={['admin','super_admin']}><Suspense fallback={<PageSkeleton/>}><UserForm/></Suspense></Protected>} />
+              <Route path="/audit" element={<Protected roles={['super_admin']}><Suspense fallback={<PageSkeleton/>}><AuditLogs/></Suspense></Protected>} />
+              <Route path="/system" element={<Protected roles={['super_admin']}><Suspense fallback={<PageSkeleton/>}><SystemPanel/></Suspense></Protected>} />
               <Route path="/profile" element={<Suspense fallback={<PageSkeleton/>}><Profile/></Suspense>} />
             </Route>
 

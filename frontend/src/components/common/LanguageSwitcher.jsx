@@ -4,9 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiChevronDown, FiCheck } from 'react-icons/fi';
 
 const FlagUZ = () => (
-  <svg width="18" height="13" viewBox="0 0 18 13" className="rounded-[2px] overflow-hidden shrink-0"><rect width="18" height="13" fill="#0099B5" />
-    <rect width="18" height="4.33" y="4.33" fill="#FFFFFF" /><rect width="18" height="4.33" y="8.66" fill="#1EB53A" />
-    <g fill="white"></g></svg>
+  <svg width="18" height="13" viewBox="0 0 18 13" className="rounded-[2px] overflow-hidden shrink-0"><rect width="18" height="13" fill="#0099B5" /><rect width="18" height="4.33" y="4.33" fill="#FFFFFF" /><rect width="18" height="4.33" y="8.66" fill="#1EB53A" /><g fill="white"></g></svg>
 );
 const FlagRU = () => (
   <svg width="18" height="13" viewBox="0 0 18 13" className="rounded-[2px] overflow-hidden shrink-0"><rect width="18" height="4.33" fill="#fff" /><rect width="18" height="4.33" y="4.33" fill="#0039A6" /><rect width="18" height="4.33" y="8.66" fill="#D52B1E" /></svg>
@@ -54,10 +52,10 @@ export default function LanguageSwitcher({ compact = false, dropUp = false }) {
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
             className={`
               absolute z-50 w-[260px] rounded-[14px] border border-border bg-card p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.4)]
-              ${dropUp ? 'bottom-[calc(100%+8px)] right-0 sm:left-0 sm:right-0' : 'left-0 sm:left-auto sm:right-0 top-[calc(100%+8px)]'}
+              ${dropUp ? 'bottom-[calc(100%+8px)] left-0 sm:left-1 sm:right-0' : 'left-0 sm:left-auto sm:right-0 top-[calc(100%+8px)]'}
             `}
           >
-            <div className="px-2.5 py-2 text-[11px] font-[650] tracking-[0.06em] uppercase text-muted-foreground">Language</div>
+            <div className="px-2.5 py-2 text-[11px] font-[650] tracking-[0.06em] uppercase text-muted-foreground">Language • Til</div>
             {langs.map(l => {
               const active = i18n.language === l.code;
               return (

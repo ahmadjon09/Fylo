@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/axios';
 import Button from '../../components/ui/Button';
 import { SearchableSelect } from '../../components/ui/Select';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 export default function SaleForm() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [sellingPrice, setSellingPrice] = useState('');
@@ -41,13 +42,60 @@ export default function SaleForm() {
       const payload = { productId, quantity: Number(quantity), sellingPrice: Number(sellingPrice), customerName, customerPhone, customerAddress, comment };
       return (await api.post('/sales', payload)).data;
     },
-    onSuccess: ()=>{ toast.success(t('toast.created')); navigate('/sales'); },
-    onError: (e)=> toast.error(e.response?.data?.message||t('toast.error')),
+    onMutate: async()=>{
+      // Optimistic: reduce product stock instantly
+      if (selected) {
+        qc.setQueriesData({ queryKey:['products'] }, (old)=>{
+          if (!old) return old;
+          return { ...old, data: (old.data||[]).map(p=> p._id===productId ? { ...p, currentQuantity: Math.max(0, p.currentQuantity - Number(quantity||0)) } : p) };
+        });
+        qc.setQueriesData({ queryKey:['products-select'] }, (old)=>{
+          if (!old) return old;
+          return old.map(p=> p._id===productId ? { ...p, currentQuantity: Math.max(0, p.currentQuantity - Number(quantity||0)) } : p);
+        });
+      }
+      // Optimistic sale list
+      const tempSale = {
+        _id: `temp-${Date.now()}`,
+        product: selected,
+        quantity: Number(quantity),
+        sellingPrice: Number(sellingPrice),
+        totalRevenue: metrics.revenue,
+        profit: metrics.profit,
+        unitCost: selected?.unitCost||0,
+        customer: { name: customerName },
+        createdAt: new Date().toISOString(),
+        status: 'completed',
+      };
+      qc.setQueriesData({ queryKey:['sales'] }, (old)=>{
+        if (!old) return old;
+        return { ...old, data: [tempSale, ...(old.data||[])] };
+      });
+      return { tempId: tempSale._id };
+    },
+    onSuccess: (res, _vars, ctx)=>{
+      toast.success(t('toast.created'));
+      // Replace temp
+      qc.setQueriesData({ queryKey:['sales'] }, (old)=>{
+        if (!old) return old;
+        return { ...old, data: (old.data||[]).map(s=> s._id===ctx?.tempId ? res.data : s) };
+      });
+      qc.invalidateQueries({queryKey:['dashboard']});
+      qc.invalidateQueries({queryKey:['products']});
+      navigate('/sales');
+    },
+    onError: (e, _vars, ctx)=>{
+      toast.error(e.response?.data?.message||t('toast.error'));
+      // Rollback
+      qc.invalidateQueries({queryKey:['products']});
+      qc.invalidateQueries({queryKey:['products-select']});
+      qc.invalidateQueries({queryKey:['sales']});
+    },
   });
 
   return (
     <div className="max-w-[1280px] mx-auto space-y-6">
-      <div className="flex items-center gap-3"><button onClick={()=>navigate('/sales')} className="h-8 w-8 rounded-[8px] border border-border bg-card flex items-center justify-center hover:bg-accent">←</button><div><h1 className="text-[20px] font-[700] tracking-[-0.02em] leading-none">{t('sale.newSale')}</h1><p className="text-[12px] text-muted-foreground mt-1">{t('sale.metrics')}</p></div></div>
+      <div className="flex items-center gap-3"><button onClick={()=>navigate('/sales')} className="h-8 w-8 rounded-[8px] border border-border bg-card flex items-center justify-center hover:bg-accent">←</button><div><h1 className="text-[20px] font-[700] tracking-[-0.02em] leading-none">{t('sale.newSale')}</h1><p className="text-[12px] text-muted-foreground mt-1">{t('sale.metrics')} • Fylo ultra-fast</p></div></div>
 
       <div className="rounded-[16px] border border-border bg-card p-6 space-y-5">
         <SearchableSelect label={`${t('sale.product')} *`} options={(products||[]).map(p=>({ label:`${p.name} — ${p.currentQuantity} ${t('dashboard.units')} • $${p.unitCost.toFixed(2)}`, value:p._id }))} value={productId} onChange={v=>{ setProductId(v); const prod = products.find(p=>p._id===v); if(prod) setSellingPrice(prod.minSellingPrice); }} placeholder={t('sale.selectProduct')} />

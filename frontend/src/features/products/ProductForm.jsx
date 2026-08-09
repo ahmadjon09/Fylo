@@ -76,8 +76,66 @@ export default function ProductForm() {
       if (isEdit) return (await api.patch(`/products/${id}`, payload)).data;
       return (await api.post('/products', payload)).data;
     },
-    onSuccess: ()=>{ toast.success(isEdit ? t('toast.updated') : t('toast.created')); qc.invalidateQueries({queryKey:['products']}); navigate('/products'); },
-    onError: (e)=> toast.error(e.response?.data?.message||t('toast.error')),
+    onMutate: async (formData) => {
+      // Optimistic ultra-fast
+      if (!isEdit) {
+        const tempId = `temp-${Date.now()}`;
+        const optimistic = {
+          _id: tempId,
+          name: formData.name,
+          quantity: Number(formData.quantity),
+          currentQuantity: Number(formData.quantity),
+          totalPurchasePrice: Number(formData.totalPurchasePrice),
+          totalIntlShipping: Number(formData.totalIntlShipping),
+          totalLocalShipping: Number(formData.totalLocalShipping),
+          unitCost,
+          minSellingPrice: Number(formData.minSellingPrice),
+          sku: formData.sku,
+          status: 'in_stock',
+          images,
+        };
+        // Add to products list cache instantly
+        qc.setQueriesData({ queryKey:['products'] }, (old)=>{
+          if (!old) return old;
+          return { ...old, data: [optimistic, ...(old.data||[])] };
+        });
+        return { tempId, optimistic };
+      } else {
+        // For edit, update cache instantly
+        qc.setQueryData(['product', id], (old)=> ({ ...old, ...formData, unitCost, images }));
+        qc.setQueriesData({ queryKey:['products'] }, (old)=>{
+          if (!old) return old;
+          return { ...old, data: (old.data||[]).map(p=> p._id===id ? { ...p, ...formData, unitCost, images } : p) };
+        });
+      }
+    },
+    onSuccess: (res, _vars, ctx)=>{
+      // Replace temp with real
+      if (!isEdit && ctx?.tempId) {
+        qc.setQueriesData({ queryKey:['products'] }, (old)=>{
+          if (!old) return old;
+          return { ...old, data: (old.data||[]).map(p=> p._id===ctx.tempId ? res.data : p) };
+        });
+      }
+      toast.success(isEdit ? t('toast.updated') : t('toast.created'));
+      qc.invalidateQueries({queryKey:['products']});
+      qc.invalidateQueries({queryKey:['dashboard']});
+      navigate('/products');
+    },
+    onError: (e, _vars, ctx)=>{
+      // Rollback
+      if (!isEdit && ctx?.tempId) {
+        qc.setQueriesData({ queryKey:['products'] }, (old)=>{
+          if (!old) return old;
+          return { ...old, data: (old.data||[]).filter(p=> p._id!==ctx.tempId) };
+        });
+      }
+      if (isEdit) {
+        qc.invalidateQueries({queryKey:['product', id]});
+        qc.invalidateQueries({queryKey:['products']});
+      }
+      toast.error(e.response?.data?.message||t('toast.error'));
+    },
   });
 
   const handleImageUpload = async (e)=>{
@@ -102,15 +160,14 @@ export default function ProductForm() {
         <button onClick={()=>navigate('/products')} className="h-8 w-8 rounded-[8px] border border-border bg-card flex items-center justify-center hover:bg-accent">←</button>
         <div>
           <h1 className="text-[20px] font-[700] tracking-[-0.02em] leading-none">{isEdit ? t('product.edit') : t('product.create')}</h1>
-          <p className="text-[12px] text-muted-foreground mt-1">{t('product.liveCalc')}</p>
+          <p className="text-[12px] text-muted-foreground mt-1">{t('product.liveCalc')} • Fylo ultra-fast cache</p>
         </div>
       </div>
 
       <div className="rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="p-6 space-y-6">
-          {/* Essential */}
           <div className="space-y-5">
-            <h3 className="text-[12px] font-[650] tracking-[0.06em] uppercase text-muted-foreground">Essential</h3>
+            <h3 className="text-[12px] font-[650] tracking-[0.06em] uppercase text-muted-foreground">Essential • Tezkor</h3>
             <div className="grid grid-cols-1 gap-4">
               <Input label={`${t('product.name')} *`} placeholder="iPhone 15 Pro Max 256GB" error={errors.name ? t(errors.name.message) : undefined} {...register('name')} autoFocus />
 
@@ -120,7 +177,6 @@ export default function ProductForm() {
                 <NumberInput label={`${t('product.minPrice')} *`} value={vals.minSellingPrice} onValueChange={v=> setValue('minSellingPrice', v)} error={minPriceInvalid ? t('validation.minPriceLow') : errors.minSellingPrice?.message} leftIcon={<FiDollarSign className="h-3.5 w-3.5" />} placeholder="0" />
               </div>
 
-              {/* Live Unit Cost Card */}
               <div className="rounded-[12px] border border-border bg-muted/40 p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-[10px] bg-foreground text-background flex items-center justify-center"><FiBox className="h-5 w-5" /></div>
@@ -139,7 +195,6 @@ export default function ProductForm() {
             </div>
           </div>
 
-          {/* Advanced toggle */}
           <div className="border-t border-border pt-5">
             <button type="button" onClick={()=>setShowAdvanced(!showAdvanced)} className="flex w-full items-center justify-between rounded-[10px] border border-dashed border-border bg-muted/20 px-3 py-2.5 text-[13px] font-[550] hover:bg-accent transition-colors">
               <span>{t('common.advanced')}</span>

@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#2563eb"/><text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle" font-family="Inter,sans-serif" font-weight="900" font-size="32" fill="white">W</text></svg>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0f1c"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <path d="M18 18 H 46 V 22 H 28 V 30 H 42 V 34 H 28 V 46 H 18 Z" fill="white" style="font-weight:800"/>
+  <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="24" fill="white" letter-spacing="-0.02em">F</text>
+  <circle cx="46" cy="18" r="6" fill="#10b981"/>
+</svg>

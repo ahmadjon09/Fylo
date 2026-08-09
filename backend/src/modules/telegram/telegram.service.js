@@ -8,7 +8,7 @@ if (env.TELEGRAM_BOT_TOKEN) {
   try {
     bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
     bot.start((ctx) => ctx.reply(
-      `Салом! Fylo тизимига хуш келибсиз! 🎉\n\n` +
+      `Салом! Fylo тизимига хуш келибсиз!\n\n` +
       `Сизнинг Telegram ID: ${ctx.from.id}\n` +
       `Бу ID ни Fylo профилингизда сақланг, шунда янги маҳсулот ва сотувлар ҳақида хабарнома оласиз.\n\n` +
       `Бот: @FyloRobot\n` +
@@ -17,7 +17,7 @@ if (env.TELEGRAM_BOT_TOKEN) {
     ));
     bot.command('myid', (ctx) => ctx.reply(`Сизнинг Telegram ID: ${ctx.from.id}\n\nFylo профилингизга шу ID ни қўшинг.`));
     bot.command('help', (ctx) => ctx.reply(
-      `Fylo — Омбор ва Савдо Тизими 🤖\n\n` +
+      `Fylo — Омбор ва Савдо Тизими\n\n` +
       `Буйруқлар:\n` +
       `/start — Бошлаш\n` +
       `/myid — Telegram ID\n` +

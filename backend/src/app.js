@@ -14,7 +14,9 @@ import productRoutes from './modules/products/product.routes.js';
 import saleRoutes from './modules/sales/sale.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import exportRoutes from './modules/export/export.routes.js';
-import axios from "axios"
+import auditRoutes from './modules/audit/audit.routes.js';
+import messageRoutes from './modules/messages/message.routes.js';
+import systemRoutes from './modules/system/system.routes.js';
 
 const app = express();
 
@@ -25,29 +27,24 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 
-// Strict CORS — only allowed origins
 const allowedOrigins = env.CORS_ORIGINS;
 
 const corsOptions = {
   origin: (origin, cb) => {
-    // Allow requests with no origin (mobile apps, curl, telegram)
     if (!origin) return cb(null, true);
-    // Allow if explicitly listed or wildcard
     if (allowedOrigins.includes('*')) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
-    // In development, allow localhost and preview e2b.app hosts
     if (!env.isProd) {
       if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('.e2b.app') || origin.includes('vercel.app')) {
         return cb(null, true);
       }
     }
-    // For Fylo production, only allow configured origins
-    console.warn(`[CORS] Blocked origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
+    console.warn(`[CORS Fylo] Blocked origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
     return cb(new Error(`CORS: Origin ${origin} not allowed`), false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','X-CSRF-Token','X-Location'],
   exposedHeaders: ['Content-Disposition'],
 };
 
@@ -60,17 +57,16 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Rate limiters — Fylo protection
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: 5 * 60 * 1000,
+  max: 10,
   message: { success: false, message: 'Кўп уриниш — кейинроқ қайта урининг. Too many attempts.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests' },
@@ -79,28 +75,10 @@ const generalLimiter = rateLimit({
 app.use('/api/', generalLimiter);
 app.use('/api/auth/', authLimiter);
 
-// Health - public, no CORS block
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, status: 'ok', project: 'Fylo', timestamp: new Date().toISOString(), uptime: process.uptime() });
+  res.json({ success: true, status: 'ok', project: 'Fylo', bot: '@FyloRobot', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-const keepServerAlive = () => {
-  if (!process.env.BASE_URL) {
-    console.warn('⚠️ BASE_URL is not set. Skipping ping.')
-    return
-  }
-
-  setInterval(() => {
-    axios
-      .get(`${process.env.BASE_URL}/api/health`)
-      .then(() => console.log('🔄 Server active'))
-      .catch(err => console.log('⚠️ Ping failed:', err.message))
-  }, 10 * 60 * 1000)
-}
-
-keepServerAlive()
-
-// Inject io placeholder - will be set per request in server.js
 app.use((req, _res, next) => {
   req.io = req.app.get('io');
   next();
@@ -112,6 +90,9 @@ app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/system', systemRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

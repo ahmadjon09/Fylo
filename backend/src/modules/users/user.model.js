@@ -1,13 +1,21 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { ROLES } from '../../constants/roles.js';
+import { env } from '../../config/env.js';
 
 const deviceSchema = new mongoose.Schema(
   {
     userAgent: String,
     ip: String,
     lastActive: { type: Date, default: Date.now },
-    location: String,
+    location: {
+      lat: { type: Number, default: null },
+      lon: { type: Number, default: null },
+      city: String,
+      country: String,
+      address: String,
+    },
+    locationString: String,
   },
   { _id: true, timestamps: false }
 );
@@ -32,8 +40,15 @@ const userSchema = new mongoose.Schema(
     telegramId: { type: String, default: null, trim: true },
     loginCount: { type: Number, default: 0 },
     preferences: {
-      language: { type: String, default: 'en' },
+      language: { type: String, default: 'uz-Cyrl' },
       theme: { type: String, default: 'system' },
+    },
+    lastLocation: {
+      lat: { type: Number, default: null },
+      lon: { type: Number, default: null },
+      city: String,
+      country: String,
+      updatedAt: Date,
     },
   },
   { timestamps: true }
@@ -46,7 +61,7 @@ userSchema.pre('save', async function (next) {
     this.phoneNormalized = this.phone.replace(/\D/g, '');
   }
   if (this.isModified('password') && this.password) {
-    const salt = await bcrypt.genSalt(12);
+    const salt = await bcrypt.genSalt(env.BCRYPT_ROUNDS || 10);
     this.password = await bcrypt.hash(this.password, salt);
   }
   next();

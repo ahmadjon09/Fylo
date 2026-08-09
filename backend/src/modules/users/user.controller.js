@@ -3,6 +3,8 @@ import { AppError, throwNotFound } from '../../utils/errors.js';
 import { parsePagination, buildPaginatedResponse, buildSearchFilter } from '../../utils/pagination.js';
 import { cache, CACHE_KEYS, redis } from '../../config/redis.js';
 import { uploadAvatar } from '../../utils/imgbb.js';
+import { logAudit } from '../audit/audit.service.js';
+import { ROLES } from '../../constants/roles.js';
 
 export const getUsers = async (req, res, next) => {
   try {
@@ -17,7 +19,6 @@ export const getUsers = async (req, res, next) => {
     const cached = await cache.get(cacheKey);
     if (cached) return res.json({ success: true, ...cached });
 
-    // Fast: single query with count via Promise.all, but cache result fire-and-forget
     const [users, total] = await Promise.all([
       User.find(filter).sort({ [sortBy]: sortOrder }).skip(skip).limit(limit).lean(),
       User.countDocuments(filter),
@@ -39,7 +40,7 @@ export const getUserById = async (req, res, next) => {
     if (cached) return res.json({ success: true, data: cached });
 
     const user = await User.findById(req.params.id).lean();
-    if (!user) throwNotFound('User');
+    if (!user) throwNotFound('Фойдаланувчи');
     const { password, ...safe } = user;
     cache.set(CACHE_KEYS.user(req.params.id), safe, 120).catch(()=>{});
     res.json({ success: true, data: safe });
@@ -48,9 +49,8 @@ export const getUserById = async (req, res, next) => {
 
 export const getMe = async (req, res, next) => {
   try {
-    // No cache for /me to always be fresh, but can be cached short
     const user = await User.findById(req.user.id).lean();
-    if (!user) throwNotFound('User');
+    if (!user) throwNotFound('Фойдаланувчи');
     const { password, ...safe } = user;
     res.json({ success: true, data: safe });
   } catch (e) { next(e); }
@@ -61,8 +61,7 @@ export const updateMe = async (req, res, next) => {
     delete req.body.role;
     delete req.body.isDisabled;
     const user = await User.findByIdAndUpdate(req.user.id, req.body, { new: true, runValidators: true }).lean();
-    if (!user) throwNotFound('User');
-    // Fire-and-forget
+    if (!user) throwNotFound('Фойдаланувчи');
     cache.invalidateTags(['users', 'user']).catch(()=>{});
     req.io?.emit('user:updated', { id: user._id, fullName: user.fullName });
     const { password, ...safe } = user;
@@ -72,7 +71,7 @@ export const updateMe = async (req, res, next) => {
 
 export const uploadMyAvatar = async (req, res, next) => {
   try {
-    if (!req.file) throw new AppError('No file uploaded', 400, 'VALIDATION_ERROR');
+    if (!req.file) throw new AppError('Файл юкланмади', 400, 'VALIDATION_ERROR');
     const result = await uploadAvatar(req.file.buffer);
     const user = await User.findByIdAndUpdate(req.user.id, { avatar: { url: result.url, thumb: result.thumb } }, { new: true }).lean();
     cache.invalidateTags(['users', 'user']).catch(()=>{});
@@ -84,7 +83,11 @@ export const createUser = async (req, res, next) => {
   try {
     const { fullName, phone, password, role, telegramId } = req.body;
 
-    // Ultra-fast path: try create directly, catch duplicate — saves 1 DB query (no findOne)
+    // Super admin check: only super_admin can create super_admin
+    if (role === ROLES.SUPER_ADMIN && req.user.role !== ROLES.SUPER_ADMIN) {
+      throw new AppError('Фақат супер админ супер админ ярата олади', 403, 'FORBIDDEN');
+    }
+
     const tempCacheId = `temp:user:${Date.now()}`;
     cache.set(tempCacheId, { fullName, phone, role }, 30).catch(()=>{});
 
@@ -98,15 +101,13 @@ export const createUser = async (req, res, next) => {
       throw err;
     }
 
-    // Fire-and-forget for speed: don't await cache invalidations
     cache.invalidateTags(['users']).catch(()=>{});
     cache.del(tempCacheId).catch(()=>{});
     redis.set('meta:hasUsers', '1', 'EX', 3600).catch(()=>{});
 
     const { password: _, ...safe } = user.toObject();
-
-    // Instant realtime — send immediately
     req.io?.emit('user:created', safe);
+    logAudit({ req, action: 'user:create', targetId: user._id, details: { fullName, phone, role } });
 
     res.status(201).json({ success: true, data: safe });
   } catch (e) { next(e); }
@@ -117,10 +118,14 @@ export const updateUser = async (req, res, next) => {
     const targetId = req.params.id;
     const isSelf = targetId === req.user.id;
 
-    // Fast: get role only first to check permission (1 query)
-    const targetRole = await User.findById(targetId).select('role').lean();
-    if (!targetRole) throwNotFound('User');
-    if (targetRole.role === 'admin' && !isSelf) {
+    const target = await User.findById(targetId).select('role').lean();
+    if (!target) throwNotFound('Фойдаланувчи');
+
+    // Super admin protection
+    if (target.role === ROLES.SUPER_ADMIN && req.user.role !== ROLES.SUPER_ADMIN) {
+      throw new AppError('Супер админни таҳрирлаб бўлмайди', 403, 'FORBIDDEN');
+    }
+    if (target.role === ROLES.ADMIN && !isSelf && req.user.role === ROLES.ADMIN) {
       throw new AppError('Бошқа админни таҳрирлаб бўлмайди', 403, 'FORBIDDEN');
     }
 
@@ -128,6 +133,7 @@ export const updateUser = async (req, res, next) => {
     cache.invalidateTags(['users', 'user']).catch(()=>{});
     cache.del(CACHE_KEYS.user(targetId)).catch(()=>{});
     req.io?.emit('user:updated', { id: user._id });
+    logAudit({ req, action: 'user:update', targetId, details: { fields: Object.keys(req.body) } });
     const { password, ...safe } = user;
     res.json({ success: true, data: safe });
   } catch (e) { next(e); }
@@ -138,30 +144,33 @@ export const deleteUser = async (req, res, next) => {
     const targetId = req.params.id;
     if (targetId === req.user.id) throw new AppError('Ўзингизни ўчира олмайсиз', 400, 'VALIDATION_ERROR');
 
-    const target = await User.findById(targetId).select('role').lean();
-    if (!target) throwNotFound('User');
-    if (target.role === 'admin') {
+    const target = await User.findById(targetId).select('role fullName').lean();
+    if (!target) throwNotFound('Фойдаланувчи');
+
+    if (target.role === ROLES.SUPER_ADMIN) {
+      throw new AppError('Супер админни ўчириб бўлмайди', 403, 'FORBIDDEN');
+    }
+    if (target.role === ROLES.ADMIN && req.user.role === ROLES.ADMIN) {
       throw new AppError('Бошқа админни ўчириб бўлмайди', 403, 'FORBIDDEN');
     }
 
-    // Fast delete
     User.findByIdAndDelete(targetId).catch(()=>{});
     cache.invalidateTags(['users', 'user']).catch(()=>{});
     cache.del(CACHE_KEYS.user(targetId)).catch(()=>{});
     req.io?.emit('user:deleted', { id: targetId });
+    logAudit({ req, action: 'user:delete', targetId, details: { fullName: target.fullName } });
     res.json({ success: true, message: 'Фойдаланувчи ўчирилди' });
   } catch (e) { next(e); }
 };
 
 export const getOnlineUsers = async (req, res, next) => {
   try {
-    // Try cache first
     const cached = await cache.get('cache:presence:online:list').catch(()=>null);
     if (cached) return res.json({ success: true, data: cached });
 
     const ids = await redis.smembers('presence:online').catch(()=>[]);
     if (!ids.length) return res.json({ success: true, data: [] });
-    const users = await User.find({ _id: { $in: ids } }).select('fullName avatar isOnline lastActiveAt role').lean();
+    const users = await User.find({ _id: { $in: ids } }).select('fullName avatar isOnline lastActiveAt role lastLocation').lean();
     cache.set('cache:presence:online:list', users, 15).catch(()=>{});
     res.json({ success: true, data: users });
   } catch (e) { next(e); }
@@ -170,7 +179,7 @@ export const getOnlineUsers = async (req, res, next) => {
 export const getUserDevices = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).select('devices fullName').lean();
-    if (!user) throwNotFound('User');
+    if (!user) throwNotFound('Фойдаланувчи');
     res.json({ success: true, data: user.devices || [] });
   } catch (e) { next(e); }
 };

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { FiTrendingUp, FiTrendingDown } from 'react-icons/fi';
 
 export const Card = ({ children, className='', hover=false, padding=true, ...props }) => (
   <motion.div
@@ -32,7 +33,7 @@ export const StatCard = ({ title, value, subtitle, icon, trend, color='hsl(var(-
           {subtitle && <p className="text-[12px] font-[450] text-muted-foreground/80">{subtitle}</p>}
           {trend !== undefined && (
             <span className={`inline-flex items-center gap-1 text-[12px] font-[600] mt-1.5 px-2 py-0.5 rounded-full ${trend>=0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600'}`}>
-              {trend>=0 ? '↗' : '↘'} {Math.abs(trend)}%
+              {trend>=0 ? <FiTrendingUp className="h-3 w-3" /> : <FiTrendingDown className="h-3 w-3" />} {Math.abs(trend)}%
             </span>
           )}
         </div>

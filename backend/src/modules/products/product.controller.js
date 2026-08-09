@@ -4,6 +4,7 @@ import { parsePagination, buildPaginatedResponse, buildSearchFilter } from '../.
 import { cache, CACHE_KEYS } from '../../config/redis.js';
 import { calcUnitCost } from '../../utils/calc.js';
 import { notifyAdmins } from '../telegram/telegram.service.js';
+import { logAudit } from '../audit/audit.service.js';
 
 const LOW_FIXED = 10;
 
@@ -23,14 +24,12 @@ export const getProducts = async (req, res, next) => {
     const cached = await cache.get(cacheKey);
     if (cached) return res.json({ success: true, ...cached });
 
-    // Single aggregate for both count and data? We use Promise.all but cache after
     const [products, total] = await Promise.all([
       Product.find(filter).sort({ [sortBy]: sortOrder }).skip(skip).limit(limit).populate('createdBy', 'fullName').lean({ virtuals: true }),
       Product.countDocuments(filter),
     ]);
 
     const result = buildPaginatedResponse(products, total, { page, limit });
-    // Fire-and-forget cache
     cache.set(cacheKey, result, 90).catch(()=>{});
     res.json({ success: true, ...result });
   } catch (e) { next(e); }
@@ -42,7 +41,7 @@ export const getProductById = async (req, res, next) => {
     if (cached) return res.json({ success: true, data: cached });
 
     const product = await Product.findById(req.params.id).populate('createdBy updatedBy', 'fullName avatar').lean({ virtuals: true });
-    if (!product) throwNotFound('Product');
+    if (!product) throwNotFound('Маҳсулот');
     cache.set(CACHE_KEYS.product(req.params.id), product, 180).catch(()=>{});
     res.json({ success: true, data: product });
   } catch (e) { next(e); }
@@ -51,6 +50,9 @@ export const getProductById = async (req, res, next) => {
 export const createProduct = async (req, res, next) => {
   try {
     const data = req.body;
+    if (!data.sku || String(data.sku).trim() === '') delete data.sku;
+    else data.sku = String(data.sku).trim();
+
     const calculated = calcUnitCost({
       purchasePrice: data.totalPurchasePrice,
       intlShipping: data.totalIntlShipping,
@@ -58,7 +60,7 @@ export const createProduct = async (req, res, next) => {
       quantity: data.quantity,
     });
     const unitCost = Math.abs(calculated - (data.unitCost || 0)) < 0.01 ? data.unitCost : calculated;
-    if (data.minSellingPrice < unitCost) throw new AppError(`Min sotuv narxi ${data.minSellingPrice} tannarx ${unitCost.toFixed(2)} dan past bo‘lishi mumkin emas`, 400, 'VALIDATION_ERROR');
+    if (data.minSellingPrice < unitCost) throw new AppError(`Мин сотув нархи ${data.minSellingPrice} таннарх ${unitCost.toFixed(2)} дан паст бўлиши мумкин эмас`, 400, 'VALIDATION_ERROR');
 
     const payload = {
       ...data,
@@ -68,30 +70,34 @@ export const createProduct = async (req, res, next) => {
       updatedBy: req.user.id,
     };
 
-    // Ultra-fast: cache pending instantly
     const tempId = `product:pending:${Date.now()}`;
     cache.set(tempId, payload, 30).catch(()=>{});
 
-    // Create in DB — minimal queries
-    const product = await Product.create(payload);
+    let product;
+    try {
+      product = await Product.create(payload);
+    } catch (err) {
+      if (err.code === 11000) {
+        const field = Object.keys(err.keyValue || {})[0] || 'SKU';
+        throw new AppError(`${field.toUpperCase()} аллақачон мавжуд: ${Object.values(err.keyValue || {}).join(', ')}`, 409, 'CONFLICT');
+      }
+      throw err;
+    }
 
-    // Fire-and-forget invalidations for speed
     cache.invalidateTags(['products', 'dashboard']).catch(()=>{});
     cache.del(tempId).catch(()=>{});
     cache.set(CACHE_KEYS.product(product._id), product.toObject({ virtuals: true }), 180).catch(()=>{});
 
-    // Realtime instantly
-    req.io?.emit('product:created', product);
+    logAudit({ req, action: 'product:create', targetId: product._id, targetModel: 'Product', details: { name: product.name, quantity: product.quantity, unitCost: product.unitCost } });
 
-    // Telegram in Cyrillic — @FyloRobot
     notifyAdmins(
-      `📦 *Янги маҳсулот қўшилди — Fylo*\n\n` +
-      `*Номи:* ${product.name}\n` +
-      `*Миқдори:* ${product.quantity} дона\n` +
-      `*Таннарх:* $${product.unitCost.toFixed(2)}\n` +
-      `*Сотув нархи:* $${product.minSellingPrice.toFixed(2)}\n` +
-      `*Қўшди:* ${req.user.fullName || 'Админ'}\n\n` +
-      `🤖 @FyloRobot`
+      `Янги маҳсулот қўшилди — Fylo\n\n` +
+      `Номи: ${product.name}\n` +
+      `Миқдори: ${product.quantity} дона\n` +
+      `Таннарх: $${product.unitCost.toFixed(2)}\n` +
+      `Сотув нархи: $${product.minSellingPrice.toFixed(2)}\n` +
+      `Қўшди: ${req.user.fullName || 'Админ'}\n\n` +
+      `Bot: @FyloRobot`
     ).catch(() => {});
 
     res.status(201).json({ success: true, data: product });
@@ -101,16 +107,43 @@ export const createProduct = async (req, res, next) => {
 export const bulkCreateProducts = async (req, res, next) => {
   try {
     const { products } = req.body;
-    const docs = products.map((p) => {
+    const cleaned = products.map(p => {
+      const np = { ...p };
+      if (!np.sku || String(np.sku).trim() === '') delete np.sku;
+      else np.sku = String(np.sku).trim();
+      return np;
+    });
+
+    const docs = cleaned.map((p) => {
       const unitCost = calcUnitCost({ purchasePrice: p.totalPurchasePrice, intlShipping: p.totalIntlShipping, localShipping: p.totalLocalShipping, quantity: p.quantity });
       return { ...p, unitCost, currentQuantity: p.quantity, createdBy: req.user.id, updatedBy: req.user.id };
     });
     for (const d of docs) {
       if (d.minSellingPrice < d.unitCost) throw new AppError(`Маҳсулот ${d.name}: мин нарх таннархдан кичик`, 400, 'VALIDATION_ERROR');
     }
-    const created = await Product.insertMany(docs, { ordered: false });
+    
+    let created;
+    try {
+      created = await Product.insertMany(docs, { ordered: false });
+    } catch (err) {
+      if (err.code === 11000 || err.writeErrors) {
+        created = [];
+        for (const doc of docs) {
+          try {
+            const single = await Product.create(doc);
+            created.push(single);
+          } catch (e) {
+            if (e.code !== 11000) throw e;
+          }
+        }
+        if (!created.length) throw new AppError('Барча маҳсулотлар дубликат — ҳеч бири қўшилмади', 409, 'CONFLICT');
+      } else {
+        throw err;
+      }
+    }
+
     cache.invalidateTags(['products', 'dashboard']).catch(()=>{});
-    req.io?.emit('product:bulk_created', { count: created.length });
+    logAudit({ req, action: 'product:bulk_create', details: { count: created.length } });
     res.status(201).json({ success: true, data: created, count: created.length });
   } catch (e) { next(e); }
 };
@@ -118,9 +151,13 @@ export const bulkCreateProducts = async (req, res, next) => {
 export const updateProduct = async (req, res, next) => {
   try {
     const updates = { ...req.body, updatedBy: req.user.id };
+    if (updates.sku !== undefined) {
+      if (!updates.sku || String(updates.sku).trim() === '') delete updates.sku;
+      else updates.sku = String(updates.sku).trim();
+    }
     if (updates.totalPurchasePrice !== undefined || updates.totalIntlShipping !== undefined || updates.totalLocalShipping !== undefined || updates.quantity !== undefined) {
       const existing = await Product.findById(req.params.id).lean();
-      if (!existing) throwNotFound('Product');
+      if (!existing) throwNotFound('Маҳсулот');
       const qty = updates.quantity ?? existing.quantity;
       const purchase = updates.totalPurchasePrice ?? existing.totalPurchasePrice;
       const intl = updates.totalIntlShipping ?? existing.totalIntlShipping;
@@ -129,12 +166,20 @@ export const updateProduct = async (req, res, next) => {
       const minPrice = updates.minSellingPrice ?? existing.minSellingPrice;
       if (minPrice < updates.unitCost) throw new AppError('Мин нарх таннархдан кичик бўлиши мумкин эмас', 400, 'VALIDATION_ERROR');
     }
-    const product = await Product.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean({ virtuals: true });
-    if (!product) throwNotFound('Product');
+    let product;
+    try {
+      product = await Product.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean({ virtuals: true });
+    } catch (err) {
+      if (err.code === 11000) {
+        throw new AppError(`SKU аллақачон мавжуд: ${Object.values(err.keyValue || {}).join(', ')}`, 409, 'CONFLICT');
+      }
+      throw err;
+    }
+    if (!product) throwNotFound('Маҳсулот');
     cache.invalidateTags(['products', 'dashboard']).catch(()=>{});
     cache.del(CACHE_KEYS.product(req.params.id)).catch(()=>{});
     cache.set(CACHE_KEYS.product(req.params.id), product, 180).catch(()=>{});
-    req.io?.emit('product:updated', product);
+    logAudit({ req, action: 'product:update', targetId: product._id, details: { name: product.name } });
     res.json({ success: true, data: product });
   } catch (e) { next(e); }
 };
@@ -142,10 +187,10 @@ export const updateProduct = async (req, res, next) => {
 export const deleteProduct = async (req, res, next) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) throwNotFound('Product');
+    if (!product) throwNotFound('Маҳсулот');
     cache.invalidateTags(['products', 'dashboard']).catch(()=>{});
     cache.del(CACHE_KEYS.product(req.params.id)).catch(()=>{});
-    req.io?.emit('product:deleted', { id: req.params.id });
+    logAudit({ req, action: 'product:delete', targetId: req.params.id, details: { name: product.name } });
     res.json({ success: true, message: 'Маҳсулот ўчирилди' });
   } catch (e) { next(e); }
 };

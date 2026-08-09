@@ -23,9 +23,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState:{ errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { phone: '+998901234567', password: 'admin123' }
+    defaultValues:{ phone:'+998901234567', password:'admin123' }
   });
   const phoneVal = watch('phone');
 
@@ -60,7 +60,7 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <PhoneInput label={t('auth.phone')} value={phoneVal} onChange={v => setValue('phone', v)} error={errors.phone ? t(errors.phone.message) : undefined} />
+              <PhoneInput label={t('auth.phone')} value={phoneVal} onChange={v=>setValue('phone', v)} error={errors.phone ? t(errors.phone.message) : undefined} />
 
               <Input label={t('auth.password')} type="password" placeholder={t('auth.passwordPlaceholder')} leftIcon={<FiLock className="h-4 w-4" />} error={errors.password ? t(errors.password.message) : undefined} {...register('password')} />
 
@@ -68,6 +68,10 @@ export default function Login() {
                 {t('auth.login')}
               </Button>
             </form>
+
+            <div className="rounded-[12px] border border-border bg-muted/40 p-3 text-[12px] leading-[1.5] text-muted-foreground">
+              <span className="font-[600] text-foreground">Fylo OS</span> — {t('auth.demoHint')} • {t('auth.registerSub')}
+            </div>
           </div>
         </div>
 

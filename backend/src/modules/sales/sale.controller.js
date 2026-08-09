@@ -5,6 +5,7 @@ import { parsePagination, buildPaginatedResponse } from '../../utils/pagination.
 import { cache, CACHE_KEYS } from '../../config/redis.js';
 import { calcSaleMetrics } from '../../utils/calc.js';
 import { notifyAdmins } from '../telegram/telegram.service.js';
+import { logAudit } from '../audit/audit.service.js';
 
 export const getSales = async (req, res, next) => {
   try {
@@ -37,7 +38,7 @@ export const getSales = async (req, res, next) => {
 export const getSaleById = async (req, res, next) => {
   try {
     const sale = await Sale.findById(req.params.id).populate('product soldBy').lean();
-    if (!sale) throwNotFound('Sale');
+    if (!sale) throwNotFound('Сотув');
     res.json({ success: true, data: sale });
   } catch (e) { next(e); }
 };
@@ -47,7 +48,7 @@ export const createSale = async (req, res, next) => {
     const { productId, quantity, sellingPrice, customerName, customerPhone, customerAddress, comment } = req.body;
 
     const product = await Product.findById(productId);
-    if (!product) throwNotFound('Product');
+    if (!product) throwNotFound('Маҳсулот');
     if (product.currentQuantity < quantity) throw new AppError(`Омборда етарли эмас. Мавжуд: ${product.currentQuantity}`, 400, 'VALIDATION_ERROR');
 
     const { cost, revenue, profit } = calcSaleMetrics({ unitCost: product.unitCost, sellingPrice, quantity });
@@ -76,7 +77,6 @@ export const createSale = async (req, res, next) => {
       soldBy: req.user.id,
     });
 
-    // Fast inventory update — single save
     product.currentQuantity -= quantity;
     product.totalSold += quantity;
     product.totalRevenue += revenue;
@@ -87,16 +87,15 @@ export const createSale = async (req, res, next) => {
     cache.del(tempKey).catch(()=>{});
     cache.del(CACHE_KEYS.product(product._id)).catch(()=>{});
 
-    req.io?.emit('sale:created', sale);
-    req.io?.emit('product:updated', product.toObject({ virtuals: true }));
+    logAudit({ req, action: 'sale:create', targetId: sale._id, details: { product: product.name, quantity, revenue, profit } });
 
     notifyAdmins(
-      `💰 *Сотув — Fylo*\n\n` +
-      `*Маҳсулот:* ${product.name} x${quantity}\n` +
-      `*Нарх:* $${sellingPrice} (таннарх $${product.unitCost.toFixed(2)})\n` +
-      `*Фойда:* $${profit.toFixed(2)}\n` +
-      `*Сотди:* ${req.user.fullName || 'Админ'}\n\n` +
-      `🤖 @FyloRobot`
+      `Сотув — Fylo\n\n` +
+      `Маҳсулот: ${product.name} x${quantity}\n` +
+      `Нарх: $${sellingPrice} (таннарх $${product.unitCost.toFixed(2)})\n` +
+      `Фойда: $${profit.toFixed(2)}\n` +
+      `Сотди: ${req.user.fullName || 'Админ'}\n\n` +
+      `Bot: @FyloRobot`
     ).catch(() => {});
 
     res.status(201).json({ success: true, data: sale });
@@ -106,7 +105,7 @@ export const createSale = async (req, res, next) => {
 export const refundSale = async (req, res, next) => {
   try {
     const sale = await Sale.findById(req.params.id);
-    if (!sale) throwNotFound('Sale');
+    if (!sale) throwNotFound('Сотув');
     if (sale.status === 'refunded') throw new AppError('Аллақачон қайтарилган', 400);
 
     const product = await Product.findById(sale.product);
@@ -124,8 +123,7 @@ export const refundSale = async (req, res, next) => {
     await sale.save();
 
     cache.invalidateTags(['products', 'sales', 'dashboard']).catch(()=>{});
-    req.io?.emit('sale:refunded', sale);
-    if (product) req.io?.emit('product:updated', product.toObject({ virtuals: true }));
+    logAudit({ req, action: 'sale:refund', targetId: sale._id, details: { product: product?.name } });
 
     res.json({ success: true, data: sale });
   } catch (e) { next(e); }

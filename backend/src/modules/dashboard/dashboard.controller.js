@@ -25,6 +25,7 @@ export const getDashboard = async (req, res, next) => {
       onlineCount,
       inventoryAgg,
       salesAgg,
+      shippingAgg,
       recentSales,
       topProducts,
       salesByDay,
@@ -60,6 +61,18 @@ export const getDashboard = async (req, res, next) => {
           },
         },
       ]),
+      // New: Shipping costs stats - chet el va ichki yo'l haqlari
+      Product.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalIntlShipping: { $sum: '$totalIntlShipping' },
+            totalLocalShipping: { $sum: '$totalLocalShipping' },
+            totalPurchase: { $sum: '$totalPurchasePrice' },
+            avgUnitCost: { $avg: '$unitCost' },
+          },
+        },
+      ]),
       Sale.find({ status: 'completed' }).sort({ createdAt: -1 }).limit(10).populate('product', 'name').populate('soldBy', 'fullName').lean(),
       Sale.aggregate([
         { $match: { status: 'completed', createdAt: { $gte: fromDate } } },
@@ -84,6 +97,7 @@ export const getDashboard = async (req, res, next) => {
 
     const inventory = inventoryAgg[0] || { totalInventoryValue: 0, totalExpectedRevenue: 0, totalExpectedProfit: 0, totalQuantity: 0 };
     const sales = salesAgg[0] || { realizedRevenue: 0, realizedCost: 0, realizedProfit: 0, totalSalesCount: 0, totalQuantitySold: 0 };
+    const shipping = shippingAgg[0] || { totalIntlShipping: 0, totalLocalShipping: 0, totalPurchase: 0, avgUnitCost: 0 };
 
     const data = {
       kpis: {
@@ -101,6 +115,12 @@ export const getDashboard = async (req, res, next) => {
         totalQuantity: inventory.totalQuantity || 0,
         totalQuantitySold: sales.totalQuantitySold || 0,
         totalSalesCount: sales.totalSalesCount || 0,
+        // New shipping stats
+        totalIntlShipping: shipping.totalIntlShipping || 0,
+        totalLocalShipping: shipping.totalLocalShipping || 0,
+        totalShipping: (shipping.totalIntlShipping || 0) + (shipping.totalLocalShipping || 0),
+        totalPurchase: shipping.totalPurchase || 0,
+        avgUnitCost: shipping.avgUnitCost || 0,
       },
       charts: {
         dailySales: salesByDay,
@@ -109,9 +129,14 @@ export const getDashboard = async (req, res, next) => {
       },
       recentSales,
       lowStockList: await Product.find({ status: 'low_stock' }).sort({ currentQuantity: 1 }).limit(8).lean(),
+      shippingBreakdown: {
+        intl: shipping.totalIntlShipping || 0,
+        local: shipping.totalLocalShipping || 0,
+        purchase: shipping.totalPurchase || 0,
+      }
     };
 
-    await cache.set(cacheKey, data, 60);
+    cache.set(cacheKey, data, 60).catch(()=>{});
     res.json({ success: true, data });
   } catch (e) { next(e); }
 };

@@ -11,7 +11,7 @@ export const initSocket = (token) => {
   }
 
   const url = import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL).origin : window.location.origin;
-  const socketUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : url);
+  const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? 'http://localhost:4000' : url);
 
   socket = io(socketUrl, {
     auth: { token },
@@ -25,18 +25,6 @@ export const initSocket = (token) => {
 
   socket.on('connect', () => {
     console.log('[Fylo Socket] connected', socket.id);
-    console.log(`
-                       ____        __               
-                      / __/_  ____/ /___            
-                     / /_/ / / / / / __ \           
-                    / __/ /_/ / /_/ /_//           
-                   /_/  \__, /____/\____/           
-                       /____/                       
-  __________________________________________________
- |                                                  |
- |    [====]   WAREHOUSE OS   [v1.0]   [====]       |
- |__________________________________________________|      
-      `)
     // Immediately request online list to fix refresh issue
     socket.emit('presence:get');
     socket.emit('user:heartbeat');
