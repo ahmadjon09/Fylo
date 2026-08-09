@@ -23,9 +23,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, setValue, watch, formState:{ errors } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues:{ phone:'+998901234567', password:'admin123' }
+    defaultValues: { phone: '', password: '' }
   });
   const phoneVal = watch('phone');
 
@@ -60,7 +60,7 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <PhoneInput label={t('auth.phone')} value={phoneVal} onChange={v=>setValue('phone', v)} error={errors.phone ? t(errors.phone.message) : undefined} />
+              <PhoneInput label={t('auth.phone')} value={phoneVal} onChange={v => setValue('phone', v)} error={errors.phone ? t(errors.phone.message) : undefined} />
 
               <Input label={t('auth.password')} type="password" placeholder={t('auth.passwordPlaceholder')} leftIcon={<FiLock className="h-4 w-4" />} error={errors.password ? t(errors.password.message) : undefined} {...register('password')} />
 
