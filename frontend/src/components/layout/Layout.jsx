@@ -28,7 +28,7 @@ export const Layout = () => {
   const { data: unread } = useQuery({
     queryKey: ['unread-count'],
     queryFn: async () => (await api.get('/messages/unread-count')).data.data,
-    refetchInterval: 10000,
+    refetchInterval: 100000,
   });
 
   useEffect(() => {
