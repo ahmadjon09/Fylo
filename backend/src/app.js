@@ -43,8 +43,8 @@ const corsOptions = {
     return cb(new Error(`CORS: Origin ${origin} not allowed`), false);
   },
   credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','X-CSRF-Token','X-Location'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Location'],
   exposedHeaders: ['Content-Disposition'],
 };
 
@@ -78,6 +78,22 @@ app.use('/api/auth/', authLimiter);
 app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', project: 'Fylo', bot: '@FyloRobot', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
+
+const keepServerAlive = () => {
+  if (!process.env.BASE_URL) {
+    console.warn('⚠️ BASE_URL is not set. Skipping ping.')
+    return
+  }
+
+  setInterval(() => {
+    axios
+      .get(`${process.env.BASE_URL}/api/health`)
+      .then(() => console.log('🔄 Server active'))
+      .catch(err => console.log('⚠️ Ping failed:', err.message))
+  }, 10 * 60 * 1000)
+}
+
+keepServerAlive()
 
 app.use((req, _res, next) => {
   req.io = req.app.get('io');
