@@ -10,7 +10,7 @@
     "seed": "node src/seed.js"
   },
   "dependencies": {
-    "axios": "^1.7.2",
+    "axios": "^1.19.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.0",
     "cookie-parser": "^1.4.6",
@@ -29,8 +29,8 @@
     "sharp": "^0.33.4",
     "socket.io": "^4.7.5",
     "telegraf": "^4.16.3",
-    "zod": "^3.23.8",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
