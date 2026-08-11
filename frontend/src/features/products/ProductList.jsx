@@ -80,16 +80,15 @@ export default function ProductList() {
   };
   const handlePrint = () => {
     const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>${t('product.title')} - Print</title><style>body{font-family:Inter,sans-serif;padding:24px} table{width:100%;border-collapse:collapse} th,td{border:1px solid #e5e7eb;padding:8px;font-size:12px;text-align:left} th{background:#f8fafc;font-weight:600}</style></head><body><h2>${t('product.title')} • ${new Date().toLocaleString()}</h2><table><thead><tr><th>${t('product.name')}</th><th>SKU</th><th>${t('product.currentQty')}</th><th>${t('product.unitCost')}</th><th>${t('product.status')}</th><th>${t('product.inventoryValue')}</th></tr></thead><tbody>${(data?.data || []).map(p => `<tr><td>${p.name}</td><td>${p.sku || ''}</td><td>${p.currentQuantity}</td><td>$${p.unitCost}</td><td>${p.status}</td><td>$${(p.currentQuantity * p.unitCost).toFixed(2)}</td></tr>`).join('')}</tbody></table></body></html>`);
+    w.document.write(`<html><head><title>${t('product.title')} - Print</title><style>body{font-family:Inter,sans-serif;padding:24px} table{width:100%;border-collapse:collapse} th,td{border:1px solid #e5e7eb;padding:8px;font-size:12px;text-align:left} th{background:#f8fafc;font-weight:600}</style></head><body><h2>${t('product.title')} • ${new Date().toLocaleString()}</h2><table><thead><tr><th>${t('product.name')}</th><th>SKU</th><th>${t('product.currentQty')}</th><th>${t('product.unitCost')}</th><th>${t('product.minPrice')}</th><th>${t('product.status')}</th><th>${t('product.inventoryValue')}</th></tr></thead><tbody>${(data?.data || []).map(p => `<tr><td>${p.name}</td><td>${p.sku || ''}</td><td>${p.currentQuantity}</td><td>$${p.unitCost}</td><td>$${p.minSellingPrice?.toFixed(2) || '0.00'}</td><td>${p.status}</td><td>$${(p.currentQuantity * p.unitCost).toFixed(2)}</td></tr>`).join('')}</tbody></table></body></html>`);
     w.document.close(); w.print();
   };
 
-  // Ustunlar taʼrifi (unitCost o‘zgartirildi)
+  // Ustunlar taʼrifi (unitCost va minSellingPrice kurs bilan)
   const columns = [
     { key: 'image', title: '', width: '56px', render: (_, row) => <img src={row.images?.[0]?.url || `https://api.dicebear.com/7.x/shapes/svg?seed=${row.name}`} alt="" className="min-h-9 h-9 min-w-9 rounded-[10px] object-cover border border-border bg-muted cursor-pointer hover:scale-105 transition-transform" onClick={() => { setSelectedProduct(row); setDetailOpen(true); }} /> },
     { key: 'name', title: t('product.name'), sortable: true, render: (v, row) => <div className="cursor-pointer" onClick={() => { setSelectedProduct(row); setDetailOpen(true); }}><div className="font-[600] tracking-[-0.01em] text-[13.5px] hover:underline">{row.name}</div><div className="text-[11px] text-muted-foreground font-mono">{row.sku || 'NO-SKU'}</div></div> },
     { key: 'currentQuantity', title: t('product.currentQty'), sortable: true, render: (v, row) => <span className="font-[600] tabular-nums">{row.currentQuantity}<span className="text-muted-foreground font-[400] text-[11px]">/{row.quantity}</span></span> },
-    // 🔥 unitCost ustuni – tooltip bilan
     {
       key: 'unitCost',
       title: t('product.unitCost'),
@@ -109,7 +108,25 @@ export default function ProductList() {
         );
       }
     },
-    { key: 'minSellingPrice', title: t('product.minPrice'), render: (v, row) => <span className="tabular-nums">${row.minSellingPrice?.toFixed(2)}</span> },
+    {
+      key: 'minSellingPrice',
+      title: t('product.minPrice'),
+      sortable: true,
+      render: (v, row) => {
+        const usd = row.minSellingPrice || 0;
+        const uzs = rateData ? usd * rateData : null;
+        return (
+          <div className="relative inline-block group cursor-help">
+            <span className="tabular-nums">${usd.toFixed(2)}</span>
+            {uzs !== null && (
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
+                {uzs.toLocaleString()} so‘m
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
     { key: 'status', title: t('product.status'), render: (v, row) => <Badge variant={row.status === 'in_stock' ? 'success' : row.status === 'low_stock' ? 'warning' : 'danger'}>{row.status.replace('_', ' ')}</Badge> },
     { key: 'inventoryValue', title: t('product.inventoryValue'), render: (v, row) => <span className="font-[600] tabular-nums">${(row.currentQuantity * row.unitCost).toFixed(2)}</span> },
     {
@@ -127,7 +144,6 @@ export default function ProductList() {
 
   return (
     <div className="space-y-5">
-      {/* ... header, filter, table – avvalgidek ... */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-[12px] bg-foreground text-background flex items-center justify-center"><FiBox className="h-5 w-5" /></div>

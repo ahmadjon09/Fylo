@@ -46,7 +46,7 @@ export default function Login() {
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between p-6">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-[10px] bg-foreground text-background flex items-center justify-center font-[800] text-[13px]">W</div>
+            <div className="h-8 w-8 rounded-[10px] bg-foreground text-background flex items-center justify-center font-[800] text-[13px]">F</div>
             <span className="text-[14px] font-[700] tracking-[-0.02em]">Fylo</span>
           </div>
           <LanguageSwitcher />
@@ -69,9 +69,7 @@ export default function Login() {
               </Button>
             </form>
 
-            <div className="rounded-[12px] border border-border bg-muted/40 p-3 text-[12px] leading-[1.5] text-muted-foreground">
-              <span className="font-[600] text-foreground">Fylo OS</span> — {t('auth.demoHint')} • {t('auth.registerSub')}
-            </div>
+          
           </div>
         </div>
 
